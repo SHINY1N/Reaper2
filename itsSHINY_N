@@ -1,0 +1,484 @@
+local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Rayfield/main/source'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "Reaper 2",
+   LoadingTitle = "Reaper 2 Utils",
+   LoadingSubtitle = "Cracked by SHINY N",
+   ConfigurationSaving = {
+      Enabled = false,
+      FolderName = nil, -- Create a custom folder for your hub/game
+      FileName = nil
+   },
+   Discord = {
+      Enabled = false,
+      Invite = "",
+      RememberJoins = true 
+   },
+   KeySystem = false,
+   KeySettings = {}
+})
+
+-- Note: Npcs have a "Quest" value that contain the quest they give, use for quest remote;
+
+local ReplicatedStorage, Players = game:GetService("ReplicatedStorage"), game:GetService("Players")
+local Remotes, Character = ReplicatedStorage.Remotes, Players.LocalPlayer.Character
+local Paths, Remotes, Util = {
+    NPC = workspace.NPCs,
+    MapLocations = workspace.Ambience,
+    Living = workspace.Living,
+    Food = workspace.Food,
+}, {
+    Quest = Remotes.TakeQuest, -- Args; questname, questnpc
+    Input = Remotes.Input, -- Args; startedinput = inputType, keyCode endedinput = endedInputType, endedKeyCode
+    RemoveQuest = Remotes.AbandonQuest -- Args; questname
+}, {}
+
+function Util:GetNPCs()
+    local t = {}
+    for _,v in pairs(Paths.NPC:GetChildren()) do 
+        table.insert(t, v)
+    end
+    return (t or nil)
+end
+
+function Util:GetNPCsClient()
+    local t = {}
+    for _,v in pairs(Paths.NPC:GetChildren()) do 
+        table.insert(t, v.Name)
+    end
+    return (t or nil)
+end
+
+function Util:GetMobs()
+    local t = {}
+    for _,v in pairs(Paths.Living:GetChildren()) do 
+        if not Players:GetPlayerFromCharacter(v) then 
+            if not table.find(t, v.Name) then 
+                table.insert(t, v.Name)
+            end
+        end
+    end
+    return (t or nil)
+end
+
+function Util:GetQuests()
+    local NPCs = Util:GetNPCs();
+    local t = {}
+    for _,v in pairs(NPCs) do 
+        if v:FindFirstChild("Quest", true) then 
+            table.insert(t, v:FindFirstChild("Quest", true).Value)
+        end
+    end
+    return (t or nil)
+end
+
+function Util:Teleport(Mob, Offset)
+    local MobHumanoidRootPart = Mob:FindFirstChild("HumanoidRootPart") 
+    if MobHumanoidRootPart then 
+        Character.HumanoidRootPart.CFrame = MobHumanoidRootPart.CFrame * CFrame.new(0,0,Offset)
+    end
+end
+
+function Util:GrantQuest(Npc)
+    local QuestValue = Npc:FindFirstChild("Quest", true).Value
+    if QuestValue then Remotes.Quest:FireServer(QuestValue, Npc) end
+end
+
+function Util:AbandonQuest(QuestName)
+    Remotes.RemoveQuest:FireServer(QuestName)
+end
+
+function Util:NPCFromQuest(Quest)
+    local NPCs = Util:GetNPCs()
+    for _,v in pairs(NPCs) do 
+        local QuestValue = v:FindFirstChild("Quest", true)
+        if QuestValue then 
+            if QuestValue == Quest then 
+                return v 
+            end
+        end
+    end
+end
+
+function Util:GetQuestsWithLevelRequirement()
+    local t = {}
+    local NPCs = Util:GetNPCs()
+    for _,v in pairs(NPCs) do 
+        local Value = v:FindFirstChild("Quest", true)
+        if v:FindFirstChild("LevelRec", true) then 
+            table.insert(t, {Value, v:FindFirstChild("LevelRec", true)})
+        end
+    end
+    return (t or nil)
+end
+
+function Util:GetAllMobsOfType(Type)
+    local t = {}
+    for _,v in pairs(Paths.Living:GetChildren()) do 
+        if not Players:GetPlayerFromCharacter(v) then 
+            if v.Name == Type then
+                table.insert(t, v)
+            end
+        end
+    end
+    return (t or nil) 
+end
+
+local HttpService = game:GetService("HttpService")
+
+function Util:GetLevel()
+    for _,v in pairs(game.Players.LocalPlayer:GetDescendants()) do 
+        if v:IsA("IntValue") and v.Name == "Level" then 
+            return v.Value
+        end
+    end
+end
+
+function Util:GetCompletedQuests()
+    for _,v in pairs(game.Players.LocalPlayer:GetDescendants()) do 
+        if v:IsA("StringValue") and v.Name == "CompletedQuests" then 
+            local Decoded = HttpService:JSONDecode(v.Value)
+            if Decoded then return Decoded end 
+        end
+    end
+    return nil;
+end
+
+function Util:GetQuestData()
+    for _,v in pairs(game.Players.LocalPlayer:GetDescendants()) do 
+        if v:IsA("StringValue") and v.Name == "Quests" then 
+            local Decoded = HttpService:JSONDecode(v.Value)
+            if Decoded then return Decoded end 
+        end
+    end
+    return nil;
+end
+
+function Util:FarmMob(MobName, Offset, Times)
+    local Mob, Stop, Data, Done = Paths.Living:FindFirstChild(MobName), false, {}, false
+    spawn(function()
+        for i = 1,Times do 
+            if Stop then break end
+            repeat wait()
+                Character.HumanoidRootPart.Anchored = false
+                Util:Teleport(Mob, Offset);
+                Util:LeftClick()
+            until Mob:FindFirstChild("Humanoid").Health == 0 or Stop
+            Character.HumanoidRootPart.Anchored = false
+            Mob = Paths.Living:FindFirstChild(MobName)
+        end
+        Done = true
+    end)
+    function Data:Stop() Stop = true end function Data:YieldUntilDone() repeat wait() until Done end
+    return Data 
+end
+
+function Util:ParseQuestData(DataKey)
+    local Data = Util:GetQuestData()
+    local QData = Data[DataKey]
+    if QData then 
+        local t = {}
+        for _,v in pairs(QData) do 
+            local sub = string.sub(v[1], 8, -1)
+            table.insert(t, {sub:gsub("%'s", ""), string.match(v[1], "%d")})
+        end
+        return (t or nil)
+    end
+end
+
+function Util:LeftClick()
+    Remotes.Input:FireServer({
+        ["inputType"] = Enum.UserInputType.MouseButton1,
+        ["keyCode"] = Enum.KeyCode.Unknown
+    });
+    wait()
+    Remotes.Input:FireServer({
+        ["endedInputType"] = Enum.UserInputType.MouseButton1,
+        ["endedKeyCode"] = Enum.KeyCode.Unknown
+    });
+end
+
+local FarmOptions = {
+    Enabled = false,
+    SelectedMob = nil,
+    Offset = 3,
+}
+
+local Tab = Window:CreateTab("Tab Example", 4483362458) -- Title, Image
+
+local Section = Tab:CreateSection("Mobs")
+
+local Dropdown = Tab:CreateDropdown({
+   Name = "Mobs",
+   Options = Util:GetMobs(),
+   CurrentOption = "Option 1",
+   Flag = "Mobs",
+   Callback = function(Option)
+       FarmOptions.SelectedMob = Option
+   end,
+})
+
+local Slider = Tab:CreateSlider({
+   Name = "Character Offset",
+   Range = {0, 10},
+   Increment = 1,
+   Suffix = "Slider",
+   CurrentValue = FarmOptions.Offset,
+   Flag = "Offset", -- A flag is the identifier for the configuration file, make sure every element has a different flag if you're using configuration saving to ensure no overlaps
+   Callback = function(Value)
+        FarmOptions.Offset = Value
+   end,
+})
+
+local Toggle = Tab:CreateToggle({
+    Name = "Mob Farm",
+    CurrentValue = false,
+    Flag = "Mob Farm",
+    Callback = function(Value)
+        FarmOptions.Enabled = Value
+        if FarmOptions.Enabled then
+            local Stop = false
+            spawn(function() repeat wait() until FarmOptions.Enabled == false Stop = true end)
+            while FarmOptions.Enabled do
+                local Mob = Paths.Living:FindFirstChild(FarmOptions.SelectedMob)
+                repeat wait()
+                    Character.HumanoidRootPart.Anchored = false
+                    Util:Teleport(Mob, FarmOptions.Offset);
+                    Util:LeftClick()
+                until Mob:FindFirstChild("Humanoid").Health == 0 or Stop
+                Character.HumanoidRootPart.Anchored = false
+                Mob = Paths.Living:FindFirstChild(FarmOptions.SelectedMob)
+            end
+        end
+    end,
+})
+
+local Section = Tab:CreateSection("Quest")
+
+local QuestOptions = {
+    SelectedQuest = nil,
+    Enabled = false
+}
+
+local Dropdown = Tab:CreateDropdown({
+   Name = "Quests",
+   Options = Util:GetNPCsClient(),
+   CurrentOption = "Option 1",
+   Flag = "Quests",
+   Callback = function(Option)
+       QuestOptions.SelectedQuest = Option
+   end,
+})
+
+local Toggle = Tab:CreateToggle({
+    Name = "Auto Quest",
+    CurrentValue = false,
+    Flag = "Auto Quest",
+    Callback = function(Value)
+        QuestOptions.Enabled = Value
+        if QuestOptions.Enabled then
+            while QuestOptions.Enabled do wait()
+                Util:GrantQuest(Paths.NPC:FindFirstChild(QuestOptions.SelectedQuest))
+            end
+        end
+    end,
+})
+
+local Section = Tab:CreateSection("NPC")
+
+local NPCOptions = {
+    SelectedNPC = nil,
+    Enabled = false
+}
+
+local Dropdown = Tab:CreateDropdown({
+   Name = "NPCs",
+   Options = Util:GetNPCsClient(),
+   CurrentOption = "Option 1",
+   Flag = "NPCs",
+   Callback = function(Option)
+       NPCOptions.SelectedNPC = Option
+   end,
+})
+
+local Button = Tab:CreateButton({
+   Name = "Teleport",
+   Callback = function()
+       Util:Teleport(Paths.NPC:FindFirstChild(NPCOptions.SelectedNPC), -3)
+   end,
+})
+
+local stringify
+local insert = table.insert
+
+stringify = function(v, spaces, usesemicolon, depth)
+	if type(v) ~= 'table' then
+		return tostring(v)
+	elseif not next(v) then
+		return '{}'
+	end
+
+	spaces = spaces or 4
+	depth = depth or 1
+
+	local space = (" "):rep(depth * spaces)
+	local sep = usesemicolon and ";" or ","
+	local concatenationBuilder = {"{"}
+	
+	for k, x in next, v do
+		insert(concatenationBuilder, ("\n%s[%s] = %s%s"):format(space,type(k)=='number'and tostring(k)or('"%s"'):format(tostring(k)), stringify(x, spaces, usesemicolon, depth+1), sep))
+	end
+
+	local s = table.concat(concatenationBuilder)
+	return ("%s\n%s}"):format(s:sub(1,-2), space:sub(1, -spaces-1))
+end
+
+local Section = Tab:CreateSection("Quest Misc.")
+
+local Stopped = false;
+local Button = Tab:CreateButton({
+    Name = "Complete Quests",
+    Callback = function()
+        local Data = Util:GetQuestData()
+        for Index,Quest in pairs(Data) do 
+            local Parsed = Util:ParseQuestData(Index) 
+            local Data_ = Parsed
+            for Index,Value in pairs(Data_) do 
+                local Enemy, Quantity = Value[1], tonumber(Value[2])
+                print(Enemy, Quantity)
+                if Quantity ~= 0 then
+                    local Enemies = Util:GetAllMobsOfType(Enemy)
+                    print(stringify(Enemies, 4, true, 7))
+                    for i = 1,Quantity do 
+                        local Mob = Enemies[i]
+                        print(Mob, Quantity)
+                        repeat wait()
+                            Util:Teleport(Mob, 3);
+                            Util:LeftClick()
+                        until Mob:FindFirstChild("Humanoid").Health == 0 or Character.Humanoid.Health == 0
+                        wait(2.5)
+                        Enemies = Util:GetAllMobsOfType(Enemy)
+                        print(stringify(Enemies, 4, true, 7))
+                    end
+                end
+            end
+        end
+    end,
+})
+
+local Options = {
+    Enabled = false
+}
+
+local Toggle = Tab:CreateToggle({
+    Name = "Auto Complete Quests",
+    CurrentValue = false,
+    Flag = "Auto Complete Quests",
+    Callback = function(Value)
+        Options.Enabled = Value
+        if Options.Enabled then
+            while Options.Enabled do 
+                local Data = Util:GetQuestData()
+                for Index,Quest in pairs(Data) do 
+                    local Parsed = Util:ParseQuestData(Index) 
+                    local Data_ = Parsed
+                    for Index,Value in pairs(Data_) do 
+                        local Enemy, Quantity = Value[1], tonumber(Value[2])
+                        print(Enemy, Quantity)
+                        if Quantity ~= 0 then
+                            local Enemies = Util:GetAllMobsOfType(Enemy)
+                            print(stringify(Enemies, 4, true, 7))
+                            for i = 1,Quantity do 
+                                local Mob = Enemies[i]
+                                print(Mob, Quantity)
+                                repeat wait()
+                                    Util:Teleport(Mob, 3);
+                                    Util:LeftClick()
+                                until Mob:FindFirstChild("Humanoid").Health == 0 or 
+                                Character.Humanoid.Health == 0
+                                wait(2.5)
+                                Enemies = Util:GetAllMobsOfType(Enemy)
+                                print(stringify(Enemies, 4, true, 7))
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end,
+})
+
+local Section = Tab:CreateSection("Keys & Skills")
+
+local Options_ = {
+    Enabled = {
+        R = false,
+        T = false, 
+        Y = false
+    }
+}
+local Toggle = Tab:CreateToggle({
+    Name = "Auto Skill R",
+    CurrentValue = false,
+    Flag = "R",
+    Callback = function(Value)
+        Options_.Enabled.R = Value
+        if Options_.Enabled.R then
+            while Options_.Enabled.R do 
+                Remotes.Input:FireServer({
+                    ["inputType"] = Enum.UserInputType.Keyboard,
+                    ["keyCode"] = Enum.KeyCode.R
+                });
+                wait()
+                Remotes.Input:FireServer({
+                    ["endedInputType"] = Enum.UserInputType.Keyboard,
+                    ["endedKeyCode"] = Enum.KeyCode.R
+                });
+            end
+        end
+    end,
+})
+
+local Toggle = Tab:CreateToggle({
+    Name = "Auto Skill T",
+    CurrentValue = false,
+    Flag = "T",
+    Callback = function(Value)
+        Options_.Enabled.T = Value
+        if Options_.Enabled.T then
+            while Options_.Enabled.T do 
+                Remotes.Input:FireServer({
+                    ["inputType"] = Enum.UserInputType.None,
+                    ["keyCode"] = Enum.KeyCode.T
+                });
+                wait()
+                Remotes.Input:FireServer({
+                    ["endedInputType"] = Enum.UserInputType.None,
+                    ["endedKeyCode"] = Enum.KeyCode.T
+                });
+            end
+        end
+    end,
+})
+
+local Toggle = Tab:CreateToggle({
+    Name = "Auto Skill Y",
+    CurrentValue = false,
+    Flag = "Y",
+    Callback = function(Value)
+        Options_.Enabled.Y = Value
+        if Options_.Enabled.Y then
+            while Options_.Enabled.Y do 
+                Remotes.Input:FireServer({
+                    ["inputType"] = Enum.UserInputType.None,
+                    ["keyCode"] = Enum.KeyCode.Y
+                });
+                wait()
+                Remotes.Input:FireServer({
+                    ["endedInputType"] = Enum.UserInputType.None,
+                    ["endedKeyCode"] = Enum.KeyCode.Y
+                });
+            end
+        end
+    end,
+})
